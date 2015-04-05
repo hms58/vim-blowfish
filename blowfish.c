@@ -1,6 +1,6 @@
 /* vi:set ts=8 sts=4 sw=4:
  *
- * VIM - Vi IMproved    by Bram Moolenaar
+ * VIM - Vi IMproved	by Bram Moolenaar
  *
  * Do ":help uganda"  in Vim to read copying and usage conditions.
  * Do ":help credits" in Vim to see a list of people who contributed.
@@ -18,32 +18,10 @@
  * - The new one "blowfish2" is better.  It uses an 8 byte CFB to avoid the
  *   repeats.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <string.h>
 
-int sha256_self_test();
-unsigned char* sha256_key(unsigned char *buf, unsigned char *salt, int salt_len);
+#include "vim.h"
 
-/*
- * Structure to hold the type of encryption and the state of encryption or
- * decryption.
- */
-typedef struct {
-    int	    method_nr;
-    void    *method_state;  /* method-specific state information */
-} cryptstate_T;
-
-#define STRCPY(d, s)           strcpy((char *)(d), (char *)(s))
-#define STRLEN(s)      strlen((char *)(s))
-
-/* values for method_nr */
-#define CRYPT_M_ZIP	0
-#define CRYPT_M_BF	1
-#define CRYPT_M_BF2	2
-#define CRYPT_M_COUNT	3 /* number of crypt methods */
+#if defined(FEAT_CRYPT) || defined(PROTO)
 
 #define ARRAY_LENGTH(A)      (sizeof(A)/sizeof(A[0]))
 
@@ -52,29 +30,41 @@ typedef struct {
 #define BF_MAX_CFB_LEN  (8 * BF_BLOCK)
 
 typedef union {
-    uint32_t ul[2];
-    unsigned char   uc[8];
+    UINT32_T ul[2];
+    char_u   uc[8];
 } block8;
+
+#if defined(WIN3264) || defined(DOS32)
+  /* MS-Windows is always little endian */
+#else
+# ifdef HAVE_CONFIG_H
+   /* in configure.in AC_C_BIGENDIAN() defines WORDS_BIGENDIAN when needed */
+# else
+   error!
+   Please change this code to define WORDS_BIGENDIAN for big-endian machines.
+# endif
+#endif
 
 /* The state of encryption, referenced by cryptstate_T. */
 typedef struct {
-    uint32_t        pax[18];            /* P-array */
-    uint32_t        sbx[4][256];        /* S-boxes */
-    int             randbyte_offset;
-    int             update_offset;
-    unsigned char  cfb_buffer[BF_MAX_CFB_LEN]; /* up to 64 bytes used */
-    int             cfb_len;            /* size of cfb_buffer actually used */
+    UINT32_T	pax[18];	    /* P-array */
+    UINT32_T	sbx[4][256];	    /* S-boxes */
+    int		randbyte_offset;
+    int		update_offset;
+    char_u	cfb_buffer[BF_MAX_CFB_LEN]; /* up to 64 bytes used */
+    int		cfb_len;	    /* size of cfb_buffer actually used */
 } bf_state_T;
 
-static void bf_e_block (bf_state_T *state, uint32_t *p_xl, uint32_t *p_xr);
-static void bf_e_cblock (bf_state_T *state, unsigned char *block);
-static int  bf_check_tables (uint32_t pax[18], uint32_t sbx[4][256], uint32_t val);
-static int  bf_self_test (void);
-static void bf_key_init (bf_state_T *state, unsigned char *password, unsigned char *salt, int salt_len);
-static void bf_cfb_init (bf_state_T *state, unsigned char *seed, int seed_len);
+
+static void bf_e_block __ARGS((bf_state_T *state, UINT32_T *p_xl, UINT32_T *p_xr));
+static void bf_e_cblock __ARGS((bf_state_T *state, char_u *block));
+static int bf_check_tables __ARGS((UINT32_T pax[18], UINT32_T sbx[4][256], UINT32_T val));
+static int bf_self_test __ARGS((void));
+static void bf_key_init __ARGS((bf_state_T *state, char_u *password, char_u *salt, int salt_len));
+static void bf_cfb_init __ARGS((bf_state_T *state, char_u *seed, int seed_len));
 
 /* Blowfish code */
-static uint32_t pax_init[18] = {
+static UINT32_T pax_init[18] = {
     0x243f6a88u, 0x85a308d3u, 0x13198a2eu,
     0x03707344u, 0xa4093822u, 0x299f31d0u,
     0x082efa98u, 0xec4e6c89u, 0x452821e6u,
@@ -83,7 +73,7 @@ static uint32_t pax_init[18] = {
     0xb5470917u, 0x9216d5d9u, 0x8979fb1bu
 };
 
-static uint32_t sbx_init[4][256] = {
+static UINT32_T sbx_init[4][256] = {
    {0xd1310ba6u, 0x98dfb5acu, 0x2ffd72dbu, 0xd01adfb7u,
     0xb8e1afedu, 0x6a267e96u, 0xba7c9045u, 0xf12c7f99u,
     0x24a19947u, 0xb3916cf7u, 0x0801f2e2u, 0x858efc16u,
@@ -358,10 +348,14 @@ static uint32_t sbx_init[4][256] = {
     bfs->sbx[3][xr & 0xFF];
 
     static void
-bf_e_block( bf_state_T *bfs, uint32_t *p_xl, uint32_t *p_xr) {
-    uint32_t temp;
-    uint32_t xl = *p_xl;
-    uint32_t xr = *p_xr;
+bf_e_block(bfs, p_xl, p_xr)
+    bf_state_T *bfs;
+    UINT32_T *p_xl;
+    UINT32_T *p_xr;
+{
+    UINT32_T temp;
+    UINT32_T xl = *p_xl;
+    UINT32_T xr = *p_xr;
 
     F1(0) F2(1)
     F1(2) F2(3)
@@ -380,17 +374,22 @@ bf_e_block( bf_state_T *bfs, uint32_t *p_xl, uint32_t *p_xr) {
     *p_xr = xr;
 }
 
-//#define WORDS_BIGENDIAN
+
 #ifdef WORDS_BIGENDIAN
 # define htonl2(x) \
     x = ((((x) &     0xffL) << 24) | (((x) & 0xff00L)     <<  8) | \
-         (((x) & 0xff0000L) >>  8) | (((x) & 0xff000000L) >> 24))
+	 (((x) & 0xff0000L) >>  8) | (((x) & 0xff000000L) >> 24))
 #else
 # define htonl2(x)
 #endif
 
-static void bf_e_cblock(bf_state_T *bfs, unsigned char *block) {
-    block8      bk;
+    static void
+bf_e_cblock(bfs, block)
+    bf_state_T *bfs;
+    char_u *block;
+{
+    block8	bk;
+
     memcpy(bk.uc, block, 8);
     htonl2(bk.ul[0]);
     htonl2(bk.ul[1]);
@@ -400,103 +399,100 @@ static void bf_e_cblock(bf_state_T *bfs, unsigned char *block) {
     memcpy(block, bk.uc, 8);
 }
 
-void mch_memmove(void *src_arg, void *dst_arg, size_t  len);
-
 /*
  * Initialize the crypt method using "password" as the encryption key and
  * "salt[salt_len]" as the salt.
  */
-static void bf_key_init( bf_state_T *bfs, unsigned char *password, unsigned char *salt, int salt_len) {
+    static void
+bf_key_init(bfs, password, salt, salt_len)
+    bf_state_T	*bfs;
+    char_u	*password;
+    char_u	*salt;
+    int		salt_len;
+{
     int      i, j, keypos = 0;
     unsigned u;
-    uint32_t val, data_l, data_r;
-    unsigned char * key;
+    UINT32_T val, data_l, data_r;
+    char_u   *key;
     int      keylen;
 
     /* Process the key 1001 times.
      * See http://en.wikipedia.org/wiki/Key_strengthening. */
-    printf(" Generate sha256 (password=%s, len=%d, salt=%s)\n", password, salt_len, salt);
-
     key = sha256_key(password, salt, salt_len);
-
-    printf(" Process 1000 times\n"); 
-    for (i = 0; i < 1000; i++) {
-        key = sha256_key(key, salt, salt_len);
-    }
+    for (i = 0; i < 1000; i++)
+	key = sha256_key(key, salt, salt_len);
 
     /* Convert the key from 64 hex chars to 32 binary chars. */
-    printf(" Convert 64 to 32 binary chars\n");
     keylen = (int)STRLEN(key) / 2;
-
     if (keylen == 0)
     {
-        printf("E831: bf_key_init() called with empty password");
-        return;
+	EMSG(_("E831: bf_key_init() called with empty password"));
+	return;
     }
     for (i = 0; i < keylen; i++)
     {
-        sscanf((char *)&key[i * 2], "%2x", &u);
-        key[i] = u;
+	sscanf((char *)&key[i * 2], "%2x", &u);
+	key[i] = u;
     }
 
     /* Use "key" to initialize the P-array ("pax") and S-boxes ("sbx") of
      * Blowfish. */
-    printf(" Memmove\n"); 
     mch_memmove(bfs->sbx, sbx_init, 4 * 4 * 256);
 
-    printf(" Pax\n"); 
     for (i = 0; i < 18; ++i)
     {
-        val = 0;
-        for (j = 0; j < 4; ++j)
-            val = (val << 8) | key[keypos++ % keylen];
-        bfs->pax[i] = pax_init[i] ^ val;
+	val = 0;
+	for (j = 0; j < 4; ++j)
+	    val = (val << 8) | key[keypos++ % keylen];
+	bfs->pax[i] = pax_init[i] ^ val;
     }
 
-    printf(" Block\n"); 
     data_l = data_r = 0;
     for (i = 0; i < 18; i += 2)
     {
-        bf_e_block(bfs, &data_l, &data_r);
-        bfs->pax[i + 0] = data_l;
-        bfs->pax[i + 1] = data_r;
+	bf_e_block(bfs, &data_l, &data_r);
+	bfs->pax[i + 0] = data_l;
+	bfs->pax[i + 1] = data_r;
     }
 
-    printf(" Dablock\n"); 
     for (i = 0; i < 4; ++i)
     {
-        for (j = 0; j < 256; j += 2)
-        {
-            bf_e_block(bfs, &data_l, &data_r);
-            bfs->sbx[i][j + 0] = data_l;
-            bfs->sbx[i][j + 1] = data_r;
-        }
+	for (j = 0; j < 256; j += 2)
+	{
+	    bf_e_block(bfs, &data_l, &data_r);
+	    bfs->sbx[i][j + 0] = data_l;
+	    bfs->sbx[i][j + 1] = data_r;
+	}
     }
 }
 
 /*
  * Blowfish self-test for corrupted tables or instructions.
  */
-static int bf_check_tables(uint32_t pax[18], uint32_t sbx[4][256], uint32_t val)
+    static int
+bf_check_tables(pax, sbx, val)
+    UINT32_T pax[18];
+    UINT32_T sbx[4][256];
+    UINT32_T val;
 {
     int i, j;
-    uint32_t c = 0;
+    UINT32_T c = 0;
 
     for (i = 0; i < 18; i++)
-        c ^= pax[i];
+	c ^= pax[i];
     for (i = 0; i < 4; i++)
-        for (j = 0; j < 256; j++)
-            c ^= sbx[i][j];
+	for (j = 0; j < 256; j++)
+	    c ^= sbx[i][j];
     return c == val;
 }
 
 typedef struct {
-    unsigned char   password[64];
-    unsigned char   salt[9];
-    unsigned char   plaintxt[9];
-    unsigned char   cryptxt[9];
-    unsigned char   badcryptxt[9]; /* cryptxt when big/little endian is wrong */
-    uint32_t keysum;
+    char_u   password[64];
+    char_u   salt[9];
+    char_u   plaintxt[9];
+    char_u   cryptxt[9];
+    char_u   badcryptxt[9]; /* cryptxt when big/little endian is wrong */
+    UINT32_T keysum;
 } struct_bf_test_data;
 
 /*
@@ -515,64 +511,51 @@ static struct_bf_test_data bf_test_data[] = {
 };
 
 /*
- * Return -1 when there is something wrong with blowfish encryption.
+ * Return FAIL when there is something wrong with blowfish encryption.
  */
-static int bf_self_test()
+    static int
+bf_self_test()
 {
     int    i, bn;
     int    err = 0;
     block8 bk;
-    uint32_t ui = 0xffffffffUL;
+    UINT32_T ui = 0xffffffffUL;
     bf_state_T state;
 
-    printf("Memset\n");
-    memset(&state, 0, sizeof(bf_state_T));
+    vim_memset(&state, 0, sizeof(bf_state_T));
     state.cfb_len = BF_MAX_CFB_LEN;
 
-    /* We can't simply use sizeof(uint32_t), it would generate a compiler
+    /* We can't simply use sizeof(UINT32_T), it would generate a compiler
      * warning. */
-    printf("Sizeof\n");
     if (ui != 0xffffffffUL || ui + 1 != 0) {
-        err++;
-        printf("E820: sizeof(uint32_t) != 4");
+	err++;
+	EMSG(_("E820: sizeof(uint32_t) != 4"));
     }
 
-    printf("Check Tables\n");
     if (!bf_check_tables(pax_init, sbx_init, 0x6ffa520a))
-        err++;
+	err++;
 
-    
     bn = ARRAY_LENGTH(bf_test_data);
-    printf("Main tests: %d\n", bn);
     for (i = 0; i < bn; i++)
     {
-        printf("--- i = %d ---\n", i);
-        printf("Key init\n");
-        bf_key_init(&state, (unsigned char *)(bf_test_data[i].password),
-                    bf_test_data[i].salt,
-                    (int)STRLEN(bf_test_data[i].salt));
+	bf_key_init(&state, (char_u *)(bf_test_data[i].password),
+		    bf_test_data[i].salt,
+		    (int)STRLEN(bf_test_data[i].salt));
+	if (!bf_check_tables(state.pax, state.sbx, bf_test_data[i].keysum))
+	    err++;
 
-        printf("Check Table\n");
-        if (!bf_check_tables(state.pax, state.sbx, bf_test_data[i].keysum))
-            err++;
-
-        printf("Memcopy\n");
-        /* Don't modify bf_test_data[i].plaintxt, self test is idempotent. */
-
-        printf("Plaintext: %s\n", bf_test_data[i].plaintxt);
-
-        memcpy(bk.uc, bf_test_data[i].plaintxt, 8);
-        bf_e_cblock(&state, bk.uc);
-        if (memcmp(bk.uc, bf_test_data[i].cryptxt, 8) != 0)
-        {
-            if (err == 0 && memcmp(bk.uc, bf_test_data[i].badcryptxt, 8) == 0)
-                printf("E817: Blowfish big/little endian use wrong");
-            err++;
-            printf("Error occured\n"); 
-        }
+	/* Don't modify bf_test_data[i].plaintxt, self test is idempotent. */
+	memcpy(bk.uc, bf_test_data[i].plaintxt, 8);
+	bf_e_cblock(&state, bk.uc);
+	if (memcmp(bk.uc, bf_test_data[i].cryptxt, 8) != 0)
+	{
+	    if (err == 0 && memcmp(bk.uc, bf_test_data[i].badcryptxt, 8) == 0)
+		EMSG(_("E817: Blowfish big/little endian use wrong"));
+	    err++;
+	}
     }
 
-    return err > 0 ? -1 : 0;
+    return err > 0 ? FAIL : OK;
 }
 
 /*
@@ -582,72 +565,94 @@ static int bf_self_test()
 /*
  * Initialize with seed "seed[seed_len]".
  */
-static void bf_cfb_init(bf_state_T *bfs, unsigned char *seed, int seed_len)
+    static void
+bf_cfb_init(bfs, seed, seed_len)
+    bf_state_T	*bfs;
+    char_u	*seed;
+    int		seed_len;
 {
     int i, mi;
 
     bfs->randbyte_offset = bfs->update_offset = 0;
-    memset(bfs->cfb_buffer, 0, bfs->cfb_len);
+    vim_memset(bfs->cfb_buffer, 0, bfs->cfb_len);
     if (seed_len > 0)
     {
-        mi = seed_len > bfs->cfb_len ? seed_len : bfs->cfb_len;
-        for (i = 0; i < mi; i++)
-            bfs->cfb_buffer[i % bfs->cfb_len] ^= seed[i % seed_len];
+	mi = seed_len > bfs->cfb_len ? seed_len : bfs->cfb_len;
+	for (i = 0; i < mi; i++)
+	    bfs->cfb_buffer[i % bfs->cfb_len] ^= seed[i % seed_len];
     }
 }
 
 #define BF_CFB_UPDATE(bfs, c) { \
-    bfs->cfb_buffer[bfs->update_offset] ^= (unsigned char)c; \
+    bfs->cfb_buffer[bfs->update_offset] ^= (char_u)c; \
     if (++bfs->update_offset == bfs->cfb_len) \
-        bfs->update_offset = 0; \
+	bfs->update_offset = 0; \
 }
 
 #define BF_RANBYTE(bfs, t) { \
     if ((bfs->randbyte_offset & BF_BLOCK_MASK) == 0) \
-        bf_e_cblock(bfs, &(bfs->cfb_buffer[bfs->randbyte_offset])); \
+	bf_e_cblock(bfs, &(bfs->cfb_buffer[bfs->randbyte_offset])); \
     t = bfs->cfb_buffer[bfs->randbyte_offset]; \
     if (++bfs->randbyte_offset == bfs->cfb_len) \
-        bfs->randbyte_offset = 0; \
+	bfs->randbyte_offset = 0; \
 }
 
 /*
  * Encrypt "from[len]" into "to[len]".
  * "from" and "to" can be equal to encrypt in place.
  */
-void crypt_blowfish_encode(cryptstate_T *state, unsigned char  *from, size_t   len, unsigned char *to) {
+    void
+crypt_blowfish_encode(state, from, len, to)
+    cryptstate_T *state;
+    char_u	*from;
+    size_t	len;
+    char_u	*to;
+{
     bf_state_T *bfs = state->method_state;
-    size_t      i;
-    int         ztemp, t;
+    size_t	i;
+    int		ztemp, t;
 
     for (i = 0; i < len; ++i)
     {
-        ztemp = from[i];
-        BF_RANBYTE(bfs, t);
-        BF_CFB_UPDATE(bfs, ztemp);
-        to[i] = t ^ ztemp;
+	ztemp = from[i];
+	BF_RANBYTE(bfs, t);
+	BF_CFB_UPDATE(bfs, ztemp);
+	to[i] = t ^ ztemp;
     }
 }
 
 /*
  * Decrypt "from[len]" into "to[len]".
  */
-void crypt_blowfish_decode(cryptstate_T *state, unsigned char  *from, size_t   len, unsigned char *to) {
+    void
+crypt_blowfish_decode(state, from, len, to)
+    cryptstate_T *state;
+    char_u	*from;
+    size_t	len;
+    char_u	*to;
+{
     bf_state_T *bfs = state->method_state;
-    size_t      i;
-    int         t;
+    size_t	i;
+    int		t;
 
     for (i = 0; i < len; ++i)
     {
-        BF_RANBYTE(bfs, t);
-        to[i] = from[i] ^ t;
-        BF_CFB_UPDATE(bfs, to[i]);
+	BF_RANBYTE(bfs, t);
+	to[i] = from[i] ^ t;
+	BF_CFB_UPDATE(bfs, to[i]);
     }
 }
 
-int blowfish_self_test();
-void crypt_blowfish_init(cryptstate_T *state, unsigned char *key, unsigned char *salt, int salt_len, unsigned char *seed, int seed_len)
+    void
+crypt_blowfish_init(state, key, salt, salt_len, seed, seed_len)
+    cryptstate_T	*state;
+    char_u*		key;
+    char_u*		salt;
+    int			salt_len;
+    char_u*		seed;
+    int			seed_len;
 {
-    bf_state_T  *bfs = (bf_state_T *)malloc(sizeof(bf_state_T));
+    bf_state_T	*bfs = (bf_state_T *)alloc_clear(sizeof(bf_state_T));
 
     state->method_state = bfs;
 
@@ -655,8 +660,8 @@ void crypt_blowfish_init(cryptstate_T *state, unsigned char *key, unsigned char 
      * times.  "blowfish2" uses a 8 byte buffer to avoid repeating. */
     bfs->cfb_len = state->method_nr == CRYPT_M_BF ? BF_MAX_CFB_LEN : BF_BLOCK;
 
-    if (blowfish_self_test() == -1)
-        return;
+    if (blowfish_self_test() == FAIL)
+	return;
 
     bf_key_init(bfs, key, salt, salt_len);
     bf_cfb_init(bfs, seed, seed_len);
@@ -664,21 +669,24 @@ void crypt_blowfish_init(cryptstate_T *state, unsigned char *key, unsigned char 
 
 /*
  * Run a test to check if the encryption works as expected.
- * Give an error and return -1 when not.
+ * Give an error and return FAIL when not.
  */
-int blowfish_self_test() {
-    printf("Testing SHA256\n");
-    if (sha256_self_test() == -1)
+    int
+blowfish_self_test()
+{
+    if (sha256_self_test() == FAIL)
     {
-        printf("E818: sha256 test failed\n");
-        return -1;
+	EMSG(_("E818: sha256 test failed"));
+	return FAIL;
     }
-
-    printf("Testing BLOWFISH\n");
-    if (bf_self_test() == -1)
+    if (bf_self_test() == FAIL)
     {
-        printf("E819: Blowfish test failed\n");
-        return -1;
+	EMSG(_("E819: Blowfish test failed"));
+	return FAIL;
     }
-    return 0;
+    EMSG(_("COIN: test successed"));
+    return OK;
 }
+
+#endif /* FEAT_CRYPT */
+

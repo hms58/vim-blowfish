@@ -1,23 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-
-int bf_self_test();
-
-#define STRCMP(d, s)           strcmp((char *)(d), (char *)(s))
-#define STRLEN(s)      strlen((char *)(s))
-
-/* values for method_nr */
-#define CRYPT_M_ZIP 0
-#define CRYPT_M_BF  1
-#define CRYPT_M_BF2 2
-#define CRYPT_M_COUNT   3 /* number of crypt methods */
-
-typedef struct {
-    int     method_nr;
-    void    *method_state;  /* method-specific state information */
-} cryptstate_T;
+#include "vim.h"
 
 typedef struct {
     char    *name;  /* encryption name as used in 'cryptmethod' */
@@ -30,10 +11,7 @@ typedef struct {
     void (*decode_fn)(cryptstate_T *state, unsigned char *from, size_t len, unsigned char *to);
 } cryptmethod_T;    
 
-void crypt_blowfish_encode (cryptstate_T *state, unsigned char *from, size_t len, unsigned char *to);
-void crypt_blowfish_decode (cryptstate_T *state, unsigned char *from, size_t len, unsigned char *to);
-void crypt_blowfish_init (cryptstate_T *state, unsigned char *key, unsigned char *salt, int salt_len, unsigned char *seed, int seed_len);
-int blowfish_self_test (void);
+
 
 void mch_memmove(void *src_arg, void *dst_arg, size_t  len);
 
@@ -183,16 +161,19 @@ cryptstate_T* crypt_create_from_file(FILE *fp, unsigned char *key)
 
 
 int main() {
+    int test_bf  = blowfish_self_test();
+#if 0
     FILE *fp; 
     cryptstate_T *state; 
 
     fp = fopen("file", "r");
     state = crypt_create_from_file(fp, "test");
 
-    printf("Method found: %d\n", (*state).method_nr);
+printf("Method found: %d\n", (*state).method_nr);
 
-
-    //printf("bf_self_test() returned %d\n", blowfish_self_test());
+#endif
+    printf("\n"); 
+    printf("bf_self_test() returned %d\n", test_bf);
     return 0;
 }
 
