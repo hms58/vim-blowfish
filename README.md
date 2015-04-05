@@ -1,5 +1,5 @@
 # vim-blowfish
-A attempt to extract from Vim the VimCrypt02 and VimCrypt03 algorithms.
+An attempt to extract from Vim the VimCrypt02 and VimCrypt03 algorithms.
 
 The goal is to implement it in Perl, Python and JavaScript and have extensive tests with original Vim 7.4 files. 
 
