@@ -1,6 +1,5 @@
 language: c
 compiler:
-  -gcc
+  - gcc
 script:
-  -make clean
-  -make
+  - make clean all
