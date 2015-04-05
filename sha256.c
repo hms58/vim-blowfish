@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define STRCPY(d, s)           strcpy((char *)(d), (char *)(s))
 
@@ -279,7 +280,7 @@ void sha256_finish(context_sha256_T *ctx, unsigned char digest[32]) {
 }
 
 static unsigned int get_some_time (void);
-
+int sha256_self_test();
 /*
  * Returns hex digest of "buf[buf_len]" in a static array.
  * if "salt" is not NULL also do "salt[salt_len]".
@@ -293,19 +294,14 @@ unsigned char* sha256_bytes(unsigned char* buf, int buf_len, unsigned char* salt
 
     sha256_self_test();
 
-    printf("Toto\n");
     sha256_start(&ctx);
-    printf("Tata\n");
     sha256_update(&ctx, buf, buf_len);
-    printf("Titi\n");
     if (salt != NULL)
         sha256_update(&ctx, salt, salt_len);
     sha256_finish(&ctx, sha256sum);
-    printf("Toutou\n");
     for (j = 0; j < 32; j++)
         sprintf((char *)hexit + j * 2, "%02x", sha256sum[j]);
     hexit[sizeof(hexit) - 1] = '\0';
-    printf("Glip\n");
     return hexit;
 }
 
@@ -313,11 +309,9 @@ unsigned char* sha256_bytes(unsigned char* buf, int buf_len, unsigned char* salt
  * Returns sha256(buf) as 64 hex chars in static array.
  */
 unsigned char* sha256_key(unsigned char *buf, unsigned char *salt, int salt_len) {
-    printf("bizarre\n"); 
     /* No passwd means don't encrypt */
     if (buf == NULL || *buf == NUL)
         return (unsigned char *)"";
-    printf("bizarre2\n"); 
     return sha256_bytes(buf, (int)STRLEN(buf), salt, salt_len);
 }
 
@@ -354,7 +348,6 @@ int sha256_self_test() {
     unsigned char*  hexit;
     static int       sha256_self_tested = 0;
 
-    printf("SHA256 self test\n"); 
     if (sha256_self_tested > 0)
         return failures > 0 ? -1 : 0;
     sha256_self_tested = 1;

@@ -24,6 +24,9 @@
 #include <stddef.h>
 #include <string.h>
 
+int sha256_self_test();
+unsigned char* sha256_key(unsigned char *buf, unsigned char *salt, int salt_len);
+
 /*
  * Structure to hold the type of encryption and the state of encryption or
  * decryption.
@@ -377,6 +380,7 @@ bf_e_block( bf_state_T *bfs, uint32_t *p_xl, uint32_t *p_xr) {
     *p_xr = xr;
 }
 
+//#define WORDS_BIGENDIAN
 #ifdef WORDS_BIGENDIAN
 # define htonl2(x) \
     x = ((((x) &     0xffL) << 24) | (((x) & 0xff00L)     <<  8) | \
@@ -396,19 +400,7 @@ static void bf_e_cblock(bf_state_T *bfs, unsigned char *block) {
     memcpy(block, bk.uc, 8);
 }
 
-void mch_memmove(void *src_arg, void *dst_arg, size_t  len) {
-    char *dst = dst_arg, *src = src_arg;
-    if (dst > src && dst < src + len)
-    {
-	src += len;
-	dst += len;
-	while (len-- > 0)
-	    *--dst = *--src;
-    }
-    else				/* copy forwards */
-	while (len-- > 0)
-	    *dst++ = *src++;
-}
+void mch_memmove(void *src_arg, void *dst_arg, size_t  len);
 
 /*
  * Initialize the crypt method using "password" as the encryption key and
@@ -424,14 +416,11 @@ static void bf_key_init( bf_state_T *bfs, unsigned char *password, unsigned char
     /* Process the key 1001 times.
      * See http://en.wikipedia.org/wiki/Key_strengthening. */
     printf(" Generate sha256 (password=%s, len=%d, salt=%s)\n", password, salt_len, salt);
-    printf(" Generate sha256 (password=%s, len=%d, salt=%s)\n", password, salt_len, salt);
 
     key = sha256_key(password, salt, salt_len);
-    printf(" I returned\n"); 
 
     printf(" Process 1000 times\n"); 
     for (i = 0; i < 1000; i++) {
-        printf("%d\n", i);
         key = sha256_key(key, salt, salt_len);
     }
 
@@ -455,6 +444,7 @@ static void bf_key_init( bf_state_T *bfs, unsigned char *password, unsigned char
     printf(" Memmove\n"); 
     mch_memmove(bfs->sbx, sbx_init, 4 * 4 * 256);
 
+    printf(" Pax\n"); 
     for (i = 0; i < 18; ++i)
     {
         val = 0;
@@ -463,6 +453,7 @@ static void bf_key_init( bf_state_T *bfs, unsigned char *password, unsigned char
         bfs->pax[i] = pax_init[i] ^ val;
     }
 
+    printf(" Block\n"); 
     data_l = data_r = 0;
     for (i = 0; i < 18; i += 2)
     {
@@ -471,6 +462,7 @@ static void bf_key_init( bf_state_T *bfs, unsigned char *password, unsigned char
         bfs->pax[i + 1] = data_r;
     }
 
+    printf(" Dablock\n"); 
     for (i = 0; i < 4; ++i)
     {
         for (j = 0; j < 256; j += 2)
@@ -554,6 +546,7 @@ static int bf_self_test()
     printf("Main tests: %d\n", bn);
     for (i = 0; i < bn; i++)
     {
+        printf("--- i = %d ---\n", i);
         printf("Key init\n");
         bf_key_init(&state, (unsigned char *)(bf_test_data[i].password),
                     bf_test_data[i].salt,
@@ -565,6 +558,9 @@ static int bf_self_test()
 
         printf("Memcopy\n");
         /* Don't modify bf_test_data[i].plaintxt, self test is idempotent. */
+
+        printf("Plaintext: %s\n", bf_test_data[i].plaintxt);
+
         memcpy(bk.uc, bf_test_data[i].plaintxt, 8);
         bf_e_cblock(&state, bk.uc);
         if (memcmp(bk.uc, bf_test_data[i].cryptxt, 8) != 0)
@@ -572,6 +568,7 @@ static int bf_self_test()
             if (err == 0 && memcmp(bk.uc, bf_test_data[i].badcryptxt, 8) == 0)
                 printf("E817: Blowfish big/little endian use wrong");
             err++;
+            printf("Error occured\n"); 
         }
     }
 
@@ -647,6 +644,7 @@ void crypt_blowfish_decode(cryptstate_T *state, unsigned char  *from, size_t   l
     }
 }
 
+int blowfish_self_test();
 void crypt_blowfish_init(cryptstate_T *state, unsigned char *key, unsigned char *salt, int salt_len, unsigned char *seed, int seed_len)
 {
     bf_state_T  *bfs = (bf_state_T *)malloc(sizeof(bf_state_T));

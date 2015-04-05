@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS =  -fmax-errors=5
+CFLAGS = -Wall -fmax-errors=5
 LDFLAGS = 
  
 SRC = $(wildcard *.c)
