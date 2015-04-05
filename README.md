@@ -9,3 +9,5 @@ The files below are identical to those used in Vim 7.4.691:
 - sha256.c
 
 Currently this implementation built but does not work. The blowfish self-test does not pass. I don't know why.
+
+![](https://travis-ci.org/nowox/vim-blowfish.svg)
