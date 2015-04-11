@@ -437,7 +437,7 @@ bf_key_init(bfs, password, salt, salt_len)
 
     /* Use "key" to initialize the P-array ("pax") and S-boxes ("sbx") of
      * Blowfish. */
-    mch_memmove(bfs->sbx, sbx_init, 4 * 4 * 256);
+    mch_memmove( sbx_init, bfs->sbx, 4 * 4 * 256);
 
     for (i = 0; i < 18; ++i)
     {
