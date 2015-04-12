@@ -28,7 +28,7 @@
 
 typedef union {
     uint32_t ul[2];
-    char_u   uc[8];
+    uint8_t   uc[8];
 } block8;
 
 // The state of encryption, referenced by cryptstate_T.
@@ -37,16 +37,16 @@ typedef struct {
     uint32_t    sbx[4][256];        // S-boxes
     int         randbyte_offset;
     int         update_offset;
-    char_u      cfb_buffer[BF_MAX_CFB_LEN]; // up to 64 bytes used
+    uint8_t      cfb_buffer[BF_MAX_CFB_LEN]; // up to 64 bytes used
     int         cfb_len;            // size of cfb_buffer actually used
 } bf_state_T;
 
 void bf_e_block (bf_state_T *state, uint32_t *p_xl, uint32_t *p_xr);
-void bf_e_cblock (bf_state_T *state, char_u *block);
+void bf_e_cblock (bf_state_T *state, uint8_t *block);
 int  bf_check_tables (uint32_t pax[18], uint32_t sbx[4][256], uint32_t val);
 int  bf_self_test (void);
-void bf_key_init (bf_state_T *state, char_u *password, char_u *salt, int salt_len);
-void bf_cfb_init (bf_state_T *state, char_u *seed, int seed_len);
+void bf_key_init (bf_state_T *state, uint8_t *password, uint8_t *salt, int salt_len);
+void bf_cfb_init (bf_state_T *state, uint8_t *seed, int seed_len);
 
 // Blowfish code
 uint32_t pax_init[18] = {
@@ -363,7 +363,7 @@ void bf_e_block(bf_state_T *bfs, uint32_t *p_xl, uint32_t *p_xr) {
 # define htonl2(x)
 #endif
 
-void bf_e_cblock(bf_state_T *bfs, char_u *block) {
+void bf_e_cblock(bf_state_T *bfs, uint8_t *block) {
     block8      bk;
 
     memcpy(bk.uc, block, 8);
@@ -379,11 +379,11 @@ void bf_e_cblock(bf_state_T *bfs, char_u *block) {
  * Initialize the crypt method using "password" as the encryption key and
  * "salt[salt_len]" as the salt.
  */
-void bf_key_init(bf_state_T *bfs, char_u *password, char_u* salt, int salt_len) {
+void bf_key_init(bf_state_T *bfs, uint8_t *password, uint8_t* salt, int salt_len) {
     int      i, j, keypos = 0;
     unsigned u;
     uint32_t val, data_l, data_r;
-    char_u   *key;
+    uint8_t   *key;
     int      keylen;
 
     // Process the key 1001 times. See http://en.wikipedia.org/wiki/Key_strengthening.
@@ -450,11 +450,11 @@ int bf_check_tables(uint32_t pax[18], uint32_t sbx[4][256], uint32_t val) {
 }
 
 typedef struct {
-    char_u   password[64];
-    char_u   salt[9];
-    char_u   plaintxt[9];
-    char_u   cryptxt[9];
-    char_u   badcryptxt[9]; // cryptxt when big/little endian is wrong
+    uint8_t   password[64];
+    uint8_t   salt[9];
+    uint8_t   plaintxt[9];
+    uint8_t   cryptxt[9];
+    uint8_t   badcryptxt[9]; // cryptxt when big/little endian is wrong
     uint32_t keysum;
 } struct_bf_test_data;
 
@@ -498,7 +498,7 @@ int bf_self_test() {
     bn = ARRAY_LENGTH(bf_test_data);
     for (i = 0; i < bn; i++)
     {
-        bf_key_init(&state, (char_u *)(bf_test_data[i].password),
+        bf_key_init(&state, (uint8_t *)(bf_test_data[i].password),
                     bf_test_data[i].salt,
                     (int)STRLEN(bf_test_data[i].salt));
         if (!bf_check_tables(state.pax, state.sbx, bf_test_data[i].keysum))
@@ -525,7 +525,7 @@ int bf_self_test() {
 /*
  * Initialize with seed "seed[seed_len]".
  */
-void bf_cfb_init(bf_state_T *bfs, char_u *seed, int seed_len) {
+void bf_cfb_init(bf_state_T *bfs, uint8_t *seed, int seed_len) {
     int i, mi;
 
     bfs->randbyte_offset = bfs->update_offset = 0;
@@ -538,25 +538,29 @@ void bf_cfb_init(bf_state_T *bfs, char_u *seed, int seed_len) {
     }
 }
 
-#define BF_CFB_UPDATE(bfs, c) { \
-    bfs->cfb_buffer[bfs->update_offset] ^= (char_u)c; \
-    if (++bfs->update_offset == bfs->cfb_len) \
-        bfs->update_offset = 0; \
+void bf_cfb_update(bf_state_T *bfs, uint8_t c) { 
+    bfs->cfb_buffer[bfs->update_offset] ^= c; 
+    if (++bfs->update_offset == bfs->cfb_len) 
+        bfs->update_offset = 0;
 }
 
-#define BF_RANBYTE(bfs, t) { \
-    if ((bfs->randbyte_offset & BF_BLOCK_MASK) == 0) \
-        bf_e_cblock(bfs, &(bfs->cfb_buffer[bfs->randbyte_offset])); \
-    t = bfs->cfb_buffer[bfs->randbyte_offset]; \
-    if (++bfs->randbyte_offset == bfs->cfb_len) \
-        bfs->randbyte_offset = 0; \
+int bf_ranbyte(bf_state_T *bfs) { 
+    int t;
+    if ((bfs->randbyte_offset & BF_BLOCK_MASK) == 0) 
+        bf_e_cblock(bfs, &(bfs->cfb_buffer[bfs->randbyte_offset])); 
+
+    t = bfs->cfb_buffer[bfs->randbyte_offset]; 
+
+    if (++bfs->randbyte_offset == bfs->cfb_len) 
+        bfs->randbyte_offset = 0; 
+    return t;
 }
 
 /*
  * Encrypt "from[len]" into "to[len]".
  * "from" and "to" can be equal to encrypt in place.
  */
-void crypt_blowfish_encode(cryptstate_T *state, char_u *from, size_t len, char_u *to) {
+void crypt_blowfish_encode(cryptstate_T *state, uint8_t *from, size_t len, uint8_t *to) {
     bf_state_T *bfs = state->method_state;
     size_t      i;
     int         ztemp, t;
@@ -564,8 +568,8 @@ void crypt_blowfish_encode(cryptstate_T *state, char_u *from, size_t len, char_u
     for (i = 0; i < len; ++i)
     {
         ztemp = from[i];
-        BF_RANBYTE(bfs, t);
-        BF_CFB_UPDATE(bfs, ztemp);
+        t = bf_ranbyte(bfs);
+        bf_cfb_update(bfs, ztemp);
         to[i] = t ^ ztemp;
     }
 }
@@ -573,26 +577,26 @@ void crypt_blowfish_encode(cryptstate_T *state, char_u *from, size_t len, char_u
 /*
  * Decrypt "from[len]" into "to[len]".
  */
-void crypt_blowfish_decode(cryptstate_T *state, char_u *from, size_t len, char_u *to) {
+void crypt_blowfish_decode(cryptstate_T *state, uint8_t *from, size_t len, uint8_t *to) {
     bf_state_T *bfs = state->method_state;
     size_t      i;
     int         t;
 
     for (i = 0; i < len; ++i)
     {
-        BF_RANBYTE(bfs, t);
+        t = bf_ranbyte(bfs);
         to[i] = from[i] ^ t;
-        BF_CFB_UPDATE(bfs, to[i]);
+        bf_cfb_update(bfs, to[i]);
     }
 }
 
-void crypt_blowfish_init( cryptstate_T *state, char_u* key, char_u* salt, int salt_len, char_u* seed, int seed_len) {
+void crypt_blowfish_init( cryptstate_T *state, uint8_t* key, uint8_t* salt, int salt_len, uint8_t* seed, int seed_len) {
     bf_state_T  *bfs = (bf_state_T *)alloc_clear(sizeof(bf_state_T));
 
     state->method_state = bfs;
 
-    /* "blowfish" uses a 64 byte buffer, causing it to repeat 8 byte groups 8
-     * times.  "blowfish2" uses a 8 byte buffer to avoid repeating. */
+    // "blowfish" uses a 64 byte buffer, causing it to repeat 8 byte groups 8
+    // * times.  "blowfish2" uses a 8 byte buffer to avoid repeating. 
     bfs->cfb_len = state->method_nr == CRYPT_M_BF ? BF_MAX_CFB_LEN : BF_BLOCK;
 
     if (blowfish_self_test() == FAIL)
@@ -609,12 +613,12 @@ void crypt_blowfish_init( cryptstate_T *state, char_u* key, char_u* salt, int sa
 int blowfish_self_test() {
     if (sha256_self_test() == FAIL)
     {
-        EMSG(_("E818: sha256 test failed"));
+        printf("Sha256 test failed");
         return FAIL;
     }
     if (bf_self_test() == FAIL)
     {
-        EMSG(_("E819: Blowfish test failed"));
+        printf("Blowfish test failed");
         return FAIL;
     }
     return OK;
