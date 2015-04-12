@@ -9,15 +9,11 @@ typedef struct {
     void (* init_fn)(cryptstate_T *state, unsigned char *key, unsigned char *salt, int salt_len, unsigned char *seed, int seed_len);
     void (*encode_fn)(cryptstate_T *state, unsigned char *from, size_t len, unsigned char *to);
     void (*decode_fn)(cryptstate_T *state, unsigned char *from, size_t len, unsigned char *to);
-} cryptmethod_T;    
+} cryptmethod_T;
 
-
-
-void mch_memmove(void *src_arg, void *dst_arg, size_t  len);
-
-/* index is method_nr of cryptstate_T, CRYPT_M_* */
+// index is method_nr of cryptstate_T, CRYPT_M_*
 static cryptmethod_T cryptmethods[CRYPT_M_COUNT] = {
-    /* Blowfish/CFB + SHA-256 custom key derivation; implementation issues. */
+    // Blowfish/CFB + SHA-256 custom key derivation; implementation issues.
     {
     "blowfish",
     "VimCrypt~02!",
@@ -40,7 +36,7 @@ static cryptmethod_T cryptmethods[CRYPT_M_COUNT] = {
     },
 };
 
-char    crypt_magic_head[] = "VimCrypt~";  
+char    crypt_magic_head[] = "VimCrypt~";
 #define CRYPT_MAGIC_LEN 12  /* cannot change */
 
 
@@ -54,7 +50,7 @@ cryptstate_T* crypt_create(int method_nr, unsigned char *key, unsigned char *sal
     state->method_nr = method_nr;
     cryptmethods[method_nr].init_fn(state, key, salt, salt_len, seed, seed_len);
     return state;
-}  
+}
 
 /*
  * Allocate a crypt state from a file header and initialize it.
@@ -80,23 +76,8 @@ cryptstate_T* crypt_create_from_header(int method_nr, unsigned char *key, unsign
  */
 int crypt_get_header_len(int method_nr) {
     return CRYPT_MAGIC_LEN
-	+ cryptmethods[method_nr].salt_len
-	+ cryptmethods[method_nr].seed_len;
-}
-
-/*
- * Return int value for crypt method name.
- * 0 for "zip", the old method.  Also for any non-valid value.
- * 1 for "blowfish".
- * 2 for "blowfish2".
- */
-int crypt_method_nr_from_name(unsigned char  *name)
-{
-    int i;
-    for (i = 0; i < CRYPT_M_COUNT; ++i)
-    if (STRCMP(name, cryptmethods[i].name) == 0)
-        return i;
-    return 0;
+    + cryptmethods[method_nr].salt_len
+    + cryptmethods[method_nr].seed_len;
 }
 
 /*
@@ -109,18 +90,18 @@ int crypt_method_nr_from_magic(char *ptr, int len)
     int i;
 
     if (len < CRYPT_MAGIC_LEN)
-	return -1;
+    return -1;
 
     for (i = 0; i < CRYPT_M_COUNT; i++)
-	if (memcmp(ptr, cryptmethods[i].magic, CRYPT_MAGIC_LEN) == 0)
-	    return i;
+    if (memcmp(ptr, cryptmethods[i].magic, CRYPT_MAGIC_LEN) == 0)
+        return i;
 
     i = (int)STRLEN(crypt_magic_head);
     if (len >= i && memcmp(ptr, crypt_magic_head, i) == 0)
-	    printf("E821: File is encrypted with unknown method");
+        printf("E821: File is encrypted with unknown method");
 
     return -1;
-}   
+}
 
 /*
  * Read the crypt method specific header data from "fp".
@@ -145,7 +126,7 @@ cryptstate_T* crypt_create_from_file(FILE *fp, unsigned char *key)
     if ((buffer = malloc(header_len)) == NULL)
         return NULL;
 
-    mch_memmove(buffer, magic_buffer, CRYPT_MAGIC_LEN);
+    memmove(magic_buffer, buffer, CRYPT_MAGIC_LEN);
     if (header_len > CRYPT_MAGIC_LEN
         && fread(buffer + CRYPT_MAGIC_LEN,
                     header_len - CRYPT_MAGIC_LEN, 1, fp) != 1)
@@ -159,21 +140,22 @@ cryptstate_T* crypt_create_from_file(FILE *fp, unsigned char *key)
     return state;
 }
 
-
 int main() {
-    int test_bf  = blowfish_self_test();
-#if 0
-    FILE *fp; 
-    cryptstate_T *state; 
+    unsigned char password[] = "test";
+    char file[] = "file";
+    FILE *fp;
+    cryptstate_T *state;
 
-    fp = fopen("file", "r");
-    state = crypt_create_from_file(fp, "test");
+    if (blowfish_self_test()) 
+        printf("Test blowfish [ok]\n");
 
-printf("Method found: %d\n", (*state).method_nr);
+    fp = fopen(file, "r");
+    state = crypt_create_from_file(fp, password);
 
-#endif
-    printf("\n"); 
-    printf("bf_self_test() returned %d\n", test_bf);
+    printf("Input file:   %s\n", file);
+    printf("Password:     %s\n", password);
+    printf("Method found: %d\n", (*state).method_nr);
+
     return 0;
 }
 
