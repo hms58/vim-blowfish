@@ -140,22 +140,56 @@ cryptstate_T* crypt_create_from_file(FILE *fp, unsigned char *key)
     return state;
 }
 
+/**
+ *
+ *  +------------+--------+--------+
+ *  |   Magic    |  Salt  |   IV   |
+ *  +------------+--------+--------+
+ *  |VimCrypt~02!|01234567|01234567|
+ *  +------------+--------+--------+
+ **/
 int main() {
+    char magic[9] = {0};
+    char salt[9] = {0};
+    char iv[9] = {0};
     unsigned char password[] = "test";
     char file[] = "file";
     FILE *fp;
-    cryptstate_T *state;
+    char in[1000] = {0};
+    char out[1000] = {0};
+    size_t pos, len;
+    cryptstate_T state;
 
     if (blowfish_self_test()) 
         printf("Test blowfish [ok]\n");
 
     fp = fopen(file, "r");
-    state = crypt_create_from_file(fp, password);
+//state = crypt_create_from_file(fp, password);
+    fread(magic, 12, 1, fp);
+    fread(salt, 8, 1, fp);
+    fread(iv, 8, 1, fp);
 
     printf("Input file:   %s\n", file);
     printf("Password:     %s\n", password);
-    printf("Method found: %d\n", (*state).method_nr);
+    //printf("Method found: %d\n", (*state).method_nr);
+    printf("Salt:         %s\n", salt);
+    printf("Iv:           %s\n", iv);
+    printf("Magic:        %s\n", magic);
 
+    pos = ftell(fp);
+    fseek(fp ,0 , SEEK_END );
+    len = ftell(fp) - pos;
+    fseek(fp ,pos , SEEK_SET );
+    printf("Len:          %d\n", (int)len);
+    fgets(in, len, fp);
+
+    printf("Do the job\n"); 
+    state.method_nr = CRYPT_M_BF;
+    crypt_blowfish_init(&state, password, salt, strlen(salt), iv, strlen(iv));
+    crypt_blowfish_decode(&state, in, len, out);
+
+    printf("Message:\n");
+    printf("%s", out);
     return 0;
 }
 

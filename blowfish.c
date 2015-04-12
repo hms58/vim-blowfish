@@ -395,14 +395,16 @@ void bf_key_init(bf_state_T *bfs, uint8_t *password, uint8_t* salt, int salt_len
     keylen = (int)STRLEN(key) / 2;
     if (keylen == 0)
     {
-        EMSG(_("E831: bf_key_init() called with empty password"));
+        printf("E831: bf_key_init() called with empty password");
         return;
     }
+
     for (i = 0; i < keylen; i++)
     {
         sscanf((char *)&key[i * 2], "%2x", &u);
         key[i] = u;
     }
+//printf("Encoded key:  %s\n", key);
 
     // Use "key" to initialize the P-array ("pax") and S-boxes ("sbx") Blowfish.
     memmove(bfs->sbx, sbx_init, 4 * 4 * 256);
